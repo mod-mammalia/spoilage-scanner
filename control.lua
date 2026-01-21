@@ -1,5 +1,26 @@
 -- control.lua
 
+local ID_RED = defines.wire_connector_id.circuit_red
+local ID_GREEN = defines.wire_connector_id.circuit_green
+local ID_CIRCUITS = { ID_RED, ID_GREEN }
+local CONTAINER_TYPES = {
+    "container",
+    "logistic-container",
+    "assembling-machine",
+    "furnace",
+    "lab",
+    "reactor",
+    "boiler",
+    "rocket-silo",
+    "space-platform-hub",
+    "cargo-landing-pad",
+    "agricultural-tower"
+}
+
+---@class EntityData
+---@field combinator LuaEntity
+---@field target LuaEntity[]
+
 local flib_gui = require "__flib__.gui"
 
 -- NOTE: ghost of destroyed entities have different unit_number than the original entity 
@@ -22,6 +43,19 @@ local function concat_table(t1, t2)
     end
 end
 
+---@param arr string[]
+---@param value string
+---@return boolean
+local function table_contains(arr, value)
+  for _, v in ipairs(arr) do
+    if v == value then
+      return true
+    end
+  end
+  return false
+end
+
+---@param entity_data EntityData
 local function update_target(entity_data)
     local combinator = entity_data.combinator
     if not combinator.valid then return end
@@ -37,22 +71,24 @@ local function update_target(entity_data)
         target_pos.x = target_pos.x - 1
     end
 
-    local entities = combinator.surface.find_entities_filtered({
-        position = target_pos, 
-        type = {
-            "container", 
-            "logistic-container", 
-            "assembling-machine", 
-            "furnace", 
-            "lab",
-            "reactor",
-            "boiler",
-            "rocket-silo",
-            "space-platform-hub",
-            "cargo-landing-pad",
-            "agricultural-tower"
-        }
-    })
+    local entities = {}
+    for _, id in ipairs(ID_CIRCUITS) do
+        local connector = combinator.get_wire_connector(id, false)
+        for _, connection in ipairs(connector.real_connections) do
+            local c_entity = connection.target.owner
+            if table_contains(CONTAINER_TYPES, c_entity.type) then
+               table.insert(entities, c_entity)
+               log('added entity to table with id: ' .. tostring(c_entity.unit_number))
+            end
+        end
+    end
+    if #entities == 0 then
+        entities = combinator.surface.find_entities_filtered({
+            position = target_pos, 
+            type = CONTAINER_TYPES
+        })
+    end
+    
     if #entities > 0 then
         entity_data.target = entities[1]
     else
