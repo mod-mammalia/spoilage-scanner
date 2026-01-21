@@ -134,34 +134,54 @@ local function update_target(entity_data)
     end
     
     if #entities > 0 then
-        entity_data.target = entities[1]
+        entity_data.targets = entities
     else
-        entity_data.target = nil
+        entity_data.targets = {}
     end
+end
+
+---@param entity_data EntityData
+local function sanitize_targets(entity_data)
+    if not entity_data.targets then
+        entity_data.targets = {}
+    end
+    local valid_targets = {}
+    for _, target in ipairs(entity_data.targets) do
+        if target.valid then
+            table.insert(valid_targets, target)
+        end
+    end
+    entity_data.targets = valid_targets
+end
+
+---@param entity_data EntityData
+---@return LuaItemStack[]
+local function load_inventories(entity_data)
+    local inv = {}
+    for _, target in ipairs(entity_data.targets) do
+        
+        local inventory_types = CONTAINER_INVENTORIES[target.type]
+        if inventory_types then
+            for _, inv_type in ipairs(inventory_types) do
+                table_concat(inv, target.get_inventory(inv_type))
+            end
+        end
+    end
+    return inv
 end
 
 ---@param entity_data EntityData
 local function update_signals(entity_data)
     if not (entity_data and entity_data.combinator and entity_data.combinator.valid) then return end
-    if not entity_data.target then
-        -- TODO: set entity light to red (or green when there's a target)
-        local control_behavior = entity_data.combinator.get_control_behavior() --[[@as LuaConstantCombinatorControlBehavior]]
-        if control_behavior.sections_count == 0 then control_behavior.add_section() end
+    sanitize_targets(entity_data)
+    local control_behavior = entity_data.combinator.get_control_behavior() --[[@as LuaConstantCombinatorControlBehavior]]
+    if #entity_data.targets == 0 then
         control_behavior.get_section(1).filters = {}
-        return
-    elseif not entity_data.target.valid then
-        entity_data.target = nil
         return
     end
 
-    local entity_type = entity_data.target.type
-    local inv = {}
-    local inventory_types = CONTAINER_INVENTORIES[entity_type]
-    if inventory_types then
-        for _, inv_type in ipairs(inventory_types) do
-            table_concat(inv, entity_data.target.get_inventory(inv_type))
-        end
-    end
+
+    local inv = load_inventories(entity_data)
 
     -- calculate freshness
     local signals = {}
@@ -209,9 +229,9 @@ local function update_signals(entity_data)
     end
 
     -- set signals
-    local control_behavior = entity_data.combinator.get_control_behavior()
+    local control_behavior = entity_data.combinator.get_control_behavior() --[[@as LuaConstantCombinatorControlBehavior]]
     if control_behavior.sections_count == 0 then control_behavior.add_section() end
-    local section = control_behavior.get_section(1)
+    local section = control_behavior.get_section(1) --[[@as LuaLogisticSection]]
     section.filters = {}
     local i = 1
     for k,v in pairs(signals)
@@ -239,9 +259,12 @@ end
 
 local function on_entity_created(event)
     local entity = event.entity
+    if not entity.valid then return end
     if storage.entity_data[entity.unit_number] then return end
-    local entity_data = {combinator=entity, target=nil, mode=aggregation_mode.mean}
+    local entity_data = {combinator=entity, targets={}, mode=aggregation_mode.mean}
     storage.entity_data[entity.unit_number] = entity_data
+    local control_behavior = entity_data.combinator.get_control_behavior() --[[@as LuaConstantCombinatorControlBehavior]]
+    if control_behavior.sections_count == 0 then control_behavior.add_section() end
     update_target(entity_data)
 end
 
@@ -251,6 +274,7 @@ end
 
 local function on_entity_rotated(event)
     local entity = event.entity
+    if not entity.valid then return end
     if not entity.name == "spoilage-scanner" then return end
     if not storage.entity_data[entity.unit_number] then return end
     update_target(storage.entity_data[entity.unit_number])
@@ -272,15 +296,40 @@ local function on_mode_changed(event)
         storage.entity_data[elem.tags.unit_number].mode = aggregation_mode.min
     elseif elem.name == "ssrb-agg-max" then
         elem.parent["ssrb-agg-mean" ].state = false
-        elem.parent["ssrb-agg-min" ].state = false
+        elem.parent["ssrb-aggn" ].state = false
         storage.entity_data[elem.tags.unit_number].mode = aggregation_mode.max
     end
+end
+
+---@class ElemModData
+---@field entity LuaEntity
+
+---@class PreviewData
+---@field type string
+---@field style string
+---@field elem_mods ElemModData[]
+
+---@param entity_data EntityData
+---@return PreviewData[]
+local function create_target_previews(entity_data)
+    local previews = {}
+    for _, target in ipairs(entity_data.targets) do
+        local preview ={ 
+            type = "entity-preview", 
+            style = "wide_entity_button",
+            elem_mods = {
+                entity = target
+            }
+        }
+        table.insert(previews, preview)
+    end
+    return previews
 end
 
 local function on_gui_opened(event)
     local player = game.get_player(event.player_index)
     local entity = event.entity
-
+    if not entity.valid then return end
     if event.gui_type ~= defines.gui_type.entity then return end
     if not entity or not entity.valid or entity.name ~= "spoilage-scanner" then return end
     if not player then return end
@@ -327,7 +376,8 @@ local function on_gui_opened(event)
         type = "flow",
         direction = "vertical"
     }
-    if entity_data.target then
+    if #entity_data.targets > 0 then
+        local target_previews = create_target_previews(entity_data)
         target_preview_flow.children = {
             {
                 type = "flow",
@@ -359,15 +409,7 @@ local function on_gui_opened(event)
                     horizontally_stretchable = true,
                     padding = 0,
                 },
-                children = {
-                    { 
-                        type = "entity-preview", 
-                        style = "wide_entity_button",
-                        elem_mods = {
-                            entity = entity_data.target
-                        },
-                    },
-                },
+                children = target_previews
             }
         }
     else
