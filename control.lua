@@ -1,25 +1,26 @@
--- control.lua
+require '_defs'
 
-local ID_RED = defines.wire_connector_id.circuit_red
-local ID_GREEN = defines.wire_connector_id.circuit_green
-local ID_CIRCUITS = { ID_RED, ID_GREEN }
-local CONTAINER_TYPES = {
-    "container",
-    "logistic-container",
-    "assembling-machine",
-    "furnace",
-    "lab",
-    "reactor",
-    "boiler",
-    "rocket-silo",
-    "space-platform-hub",
-    "cargo-landing-pad",
-    "agricultural-tower"
+local ID_CIRCUITS = { defines.wire_connector_id.circuit_red, defines.wire_connector_id.circuit_green }
+
+local CONTAINER_INVENTORIES = {
+    ["container"] = {defines.inventory.chest},
+    ["logistic-container"] = {defines.inventory.chest},
+    ["infinity-container"] = {defines.inventory.chest},
+    ["assembling-machine"] = {defines.inventory.assembling_machine_input, defines.inventory.assembling_machine_output, defines.inventory.fuel},
+    ["furnace"] = {defines.inventory.furnace_source, defines.inventory.furnace_result},
+    ["lab"] = {defines.inventory.lab_input},
+    ["reactor"] = {defines.inventory.fuel, defines.inventory.burnt_result},
+    ["boiler"] = {defines.inventory.fuel, defines.inventory.burnt_result},
+    ["rocket-silo"] = {defines.inventory.rocket_silo_rocket},
+    ["space-platform-hub"] = {defines.inventory.hub_main},
+    ["cargo-landing-pad"] = {defines.inventory.cargo_landing_pad_main},
+    ["agricultural-tower"] = {defines.inventory.assembling_machine_output},
 }
 
----@class EntityData
----@field combinator LuaEntity
----@field target LuaEntity[]
+local CONTAINER_TYPES = {}
+for t, _ in pairs(CONTAINER_INVENTORIES) do
+    table.insert(CONTAINER_TYPES, t)
+end
 
 local flib_gui = require "__flib__.gui"
 
@@ -32,12 +33,12 @@ local flib_gui = require "__flib__.gui"
 -- TODO: Dynamically update gui to match target
 -- NOTE: current migration script might be an issue with multiplayer
 
-local MODE_AVERAGE = 1
-local MODE_LEAST = 2
-local MODE_MOST = 3
-
-
-local function concat_table(t1, t2)
+---@param t1 table<any,any>
+---@param t2 table<any,any> | LuaInventory | nil
+local function table_concat(t1, t2)
+    if not t2 then
+        return
+    end
     for i=1,#t2 do
         t1[#t1+1] = t2[i]
     end
@@ -53,6 +54,59 @@ local function table_contains(arr, value)
     end
   end
   return false
+end
+
+i = 0
+local function print_console(msg)
+    i = i + 1
+    local prefix = '[' .. string.format("%05d", i) .. '] '
+    game.print(prefix .. msg)
+end
+
+
+---@param source LuaEntity
+---@param network_id integer
+---@param entities? table<integer, LuaEntity>
+---@return table<integer, LuaEntity>
+local function recurse_connected_entities(source, network_id, entities)
+    if not entities then
+        entities = {}
+    end
+    for _, id in ipairs(ID_CIRCUITS) do
+        local connector = source.get_wire_connector(id, false)
+        if connector.network_id == 0 then
+            goto continue
+        end
+        local required_network_id = network_id
+        if network_id == 0 then
+            required_network_id = connector.network_id
+        end
+        if connector.network_id == required_network_id then
+            for _, connection in ipairs(connector.real_connections) do
+                local c_entity = connection.target.owner
+                if not entities[c_entity.unit_number] then
+                    entities[c_entity.unit_number] = c_entity
+                    recurse_connected_entities(c_entity, required_network_id, entities)
+                end
+            end
+        end
+        ::continue::
+    end
+    return entities
+end
+
+---@param source LuaEntity
+---@return LuaEntity[]
+local function get_connected_containers(source)
+    
+    local entities = recurse_connected_entities(source, 0)
+    local containers = {}
+    for _, entity in pairs(entities) do
+        if table_contains(CONTAINER_TYPES, entity.type) then
+            table.insert(containers, entity)
+        end
+    end
+    return containers
 end
 
 ---@param entity_data EntityData
@@ -71,17 +125,7 @@ local function update_target(entity_data)
         target_pos.x = target_pos.x - 1
     end
 
-    local entities = {}
-    for _, id in ipairs(ID_CIRCUITS) do
-        local connector = combinator.get_wire_connector(id, false)
-        for _, connection in ipairs(connector.real_connections) do
-            local c_entity = connection.target.owner
-            if table_contains(CONTAINER_TYPES, c_entity.type) then
-               table.insert(entities, c_entity)
-               log('added entity to table with id: ' .. tostring(c_entity.unit_number))
-            end
-        end
-    end
+    local entities = get_connected_containers(entity_data.combinator)
     if #entities == 0 then
         entities = combinator.surface.find_entities_filtered({
             position = target_pos, 
@@ -96,11 +140,12 @@ local function update_target(entity_data)
     end
 end
 
+---@param entity_data EntityData
 local function update_signals(entity_data)
     if not (entity_data and entity_data.combinator and entity_data.combinator.valid) then return end
     if not entity_data.target then
         -- TODO: set entity light to red (or green when there's a target)
-        local control_behavior = entity_data.combinator.get_control_behavior()
+        local control_behavior = entity_data.combinator.get_control_behavior() --[[@as LuaConstantCombinatorControlBehavior]]
         if control_behavior.sections_count == 0 then control_behavior.add_section() end
         control_behavior.get_section(1).filters = {}
         return
@@ -111,35 +156,16 @@ local function update_signals(entity_data)
 
     local entity_type = entity_data.target.type
     local inv = {}
-    if entity_type == "container" or entity_type == "logistic-container"then
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.chest))
-    elseif entity_type == "assembling-machine" then
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.assembling_machine_input))
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.assembling_machine_output))
-        if entity_data.target.burner then
-            concat_table(inv, entity_data.target.get_inventory(defines.inventory.fuel))
+    local inventory_types = CONTAINER_INVENTORIES[entity_type]
+    if inventory_types then
+        for _, inv_type in ipairs(inventory_types) do
+            table_concat(inv, entity_data.target.get_inventory(inv_type))
         end
-    elseif entity_type == "furnace" then
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.furnace_source))
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.furnace_result))
-    elseif entity_type == "lab" then
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.lab_input))
-    elseif entity_type == "reactor" or entity_type == "boiler" then
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.fuel))
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.burnt_result))
-    elseif entity_type == "rocket-silo" then
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.rocket_silo_rocket))
-    elseif entity_type == "space-platform-hub" then
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.hub_main))
-    elseif entity_type == "cargo-landing-pad" then
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.cargo_landing_pad_main))
-    elseif entity_type == "agricultural-tower" then
-        concat_table(inv, entity_data.target.get_inventory(defines.inventory.assembling_machine_output))
     end
 
     -- calculate freshness
     local signals = {}
-    if entity_data.mode == MODE_AVERAGE then
+    if entity_data.mode == aggregation_mode.mean then
         local counts = {}
         for i=1, #inv do
             local itemStack = inv[i]
@@ -156,7 +182,7 @@ local function update_signals(entity_data)
         for k,v in pairs(signals) do
             signals[k] = math.ceil(100 - v / counts[k] * 100)
         end
-    elseif entity_data.mode == MODE_LEAST then
+    elseif entity_data.mode == aggregation_mode.min then
         for i=1, #inv do
             local itemStack = inv[i]
             if itemStack and itemStack.valid_for_read and itemStack.spoil_percent > 0 then
@@ -168,7 +194,7 @@ local function update_signals(entity_data)
         for k,v in pairs(signals) do
             signals[k] = math.ceil(100 - v * 100)
         end
-    elseif entity_data.mode == MODE_MOST then
+    elseif entity_data.mode == aggregation_mode.max then
         for i=1, #inv do
             local itemStack = inv[i]
             if itemStack and itemStack.valid_for_read and itemStack.spoil_percent > 0 then
@@ -214,7 +240,7 @@ end
 local function on_entity_created(event)
     local entity = event.entity
     if storage.entity_data[entity.unit_number] then return end
-    local entity_data = {combinator=entity, target=nil, mode=MODE_AVERAGE}
+    local entity_data = {combinator=entity, target=nil, mode=aggregation_mode.mean}
     storage.entity_data[entity.unit_number] = entity_data
     update_target(entity_data)
 end
@@ -236,18 +262,18 @@ local function on_mode_changed(event)
     local elem = event.element
     if not elem then return end
 
-    if elem.name == "ssrb-ave" then
-        elem.parent["ssrb-least" ].state = false
-        elem.parent["ssrb-most" ].state = false
-        storage.entity_data[elem.tags.unit_number].mode = MODE_AVERAGE
-    elseif elem.name == "ssrb-least" then
-        elem.parent["ssrb-ave" ].state = false
-        elem.parent["ssrb-most" ].state = false
-        storage.entity_data[elem.tags.unit_number].mode = MODE_LEAST
-    elseif elem.name == "ssrb-most" then
-        elem.parent["ssrb-ave" ].state = false
-        elem.parent["ssrb-least" ].state = false
-        storage.entity_data[elem.tags.unit_number].mode = MODE_MOST
+    if elem.name == "ssrb-agg-mean" then
+        elem.parent["ssrb-agg-min" ].state = false
+        elem.parent["ssrb-agg-max" ].state = false
+        storage.entity_data[elem.tags.unit_number].mode = aggregation_mode.mean
+    elseif elem.name == "ssrb-agg-min" then
+        elem.parent["ssrb-agg-mean" ].state = false
+        elem.parent["ssrb-agg-max" ].state = false
+        storage.entity_data[elem.tags.unit_number].mode = aggregation_mode.min
+    elseif elem.name == "ssrb-agg-max" then
+        elem.parent["ssrb-agg-mean" ].state = false
+        elem.parent["ssrb-agg-min" ].state = false
+        storage.entity_data[elem.tags.unit_number].mode = aggregation_mode.max
     end
 end
 
@@ -381,26 +407,26 @@ local function on_gui_opened(event)
                 caption = {"gui-control-behavior.mode-of-operation"}
             },
             {
-                name = "ssrb-ave",
+                name = "ssrb-agg-mean",
                 type = "radiobutton",
-                state = entity_data.mode==MODE_AVERAGE,
-                caption = { "gui.spoilage-sensor-average" },
+                state = entity_data.mode==aggregation_mode.mean,
+                caption = { "gui.spoilage-sensor-agg-mean" },
                 tags = {unit_number = entity.unit_number},
                 handler = {[defines.events.on_gui_checked_state_changed] = on_mode_changed}
             },
             {
-                name = "ssrb-least",
+                name = "ssrb-agg-min",
                 type = "radiobutton",
-                state = entity_data.mode==MODE_LEAST,
-                caption = { "gui.spoilage-sensor-least" },
+                state = entity_data.mode==aggregation_mode.min,
+                caption = { "gui.spoilage-sensor-agg-min" },
                 tags = {unit_number = entity.unit_number},
                 handler = {[defines.events.on_gui_checked_state_changed] = on_mode_changed}
             },
             {
-                name = "ssrb-most",
+                name = "ssrb-agg-max",
                 type = "radiobutton",
-                state = entity_data.mode==MODE_MOST,
-                caption = { "gui.spoilage-sensor-most" },
+                state = entity_data.mode==aggregation_mode.max,
+                caption = { "gui.spoilage-sensor-agg-max" },
                 tags = {unit_number = entity.unit_number},
                 handler = {[defines.events.on_gui_checked_state_changed] = on_mode_changed}
             }
@@ -463,7 +489,7 @@ script.on_configuration_changed(function(changes)
         local temp_table = {}
         for _,v in pairs(storage.entity_data) do
             temp_table[v.combinator.unit_number] = v
-            temp_table[v.combinator.unit_number].mode = MODE_AVERAGE
+            temp_table[v.combinator.unit_number].mode = aggregation_mode.mean
         end
         storage.entity_data = temp_table
     end
