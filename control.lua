@@ -1,4 +1,7 @@
-require '_defs'
+local Common = require 'common'
+
+--- TODO:
+--- 1. Add a boolean option on each scanner to enable or disable the new circuit network scanning features
 
 local ID_CIRCUITS = { defines.wire_connector_id.circuit_red, defines.wire_connector_id.circuit_green }
 
@@ -23,15 +26,6 @@ for t, _ in pairs(CONTAINER_INVENTORIES) do
 end
 
 local flib_gui = require "__flib__.gui"
-
--- NOTE: ghost of destroyed entities have different unit_number than the original entity 
---   but accessible with ghost_unit_number
---   could also just reset data on destruction?
---   uses of spoilage scanner is liable for destruction so it would be best for it to be recoverable
---   could also just don't delete data but that might cause issues
-
--- TODO: Dynamically update gui to match target
--- NOTE: current migration script might be an issue with multiplayer
 
 ---@param t1 table<any,any>
 ---@param t2 table<any,any> | LuaInventory | nil
@@ -140,6 +134,23 @@ local function update_target(entity_data)
     end
 end
 
+
+---@param entity_data EntityData
+---@param signals? table<string,integer>
+local function update_filters(entity_data, signals)
+    local control_behavior = entity_data.combinator.get_control_behavior() --[[@as LuaConstantCombinatorControlBehavior]]
+    if control_behavior.sections_count == 0 then control_behavior.add_section() end
+    local section = control_behavior.get_section(1) --[[@as LuaLogisticSection]]
+    section.filters = {}
+    if not signals then return end
+    local i = 1
+    for k,v in pairs(signals)
+    do
+        section.set_slot(i, {value = {type="item", name=k, quality="normal"}, min=v})
+        i = i + 1
+    end
+end
+
 ---@param entity_data EntityData
 local function sanitize_targets(entity_data)
     if not entity_data.targets then
@@ -170,78 +181,58 @@ local function load_inventories(entity_data)
     return inv
 end
 
+---@param inventory LuaItemStack[]
+---@param mode aggregation_mode
+---@return table<string,integer>
+local function compute_signals(inventory, mode)
+    local signals = {}
+    local counts = {}
+    local defaults = {
+        [aggregation_mode.mean] = 0,
+        [aggregation_mode.min] = 0,
+        [aggregation_mode.max] = 100,
+    }
+    for i=1, #inventory do
+        local itemStack = inventory[i]
+        if itemStack and itemStack.valid_for_read and itemStack.spoil_percent > 0 then
+            local item_name = itemStack.name
+            signals[item_name] = signals[item_name] or defaults[mode]
+            if mode == aggregation_mode.mean then
+                signals[item_name] = signals[item_name] + itemStack.spoil_percent * itemStack.count
+                counts[item_name] = (counts[item_name] or 0) + itemStack.count
+            elseif mode == aggregation_mode.min then
+                if signals[item_name] < itemStack.spoil_percent then signals[item_name] = itemStack.spoil_percent end
+            elseif mode == aggregation_mode.max then
+                if signals[item_name] > itemStack.spoil_percent then signals[item_name] = itemStack.spoil_percent end
+            end
+        end
+    end
+
+    for k,v in pairs(signals) do
+        if mode == aggregation_mode.mean then
+            signals[k] = math.ceil(100 - v / counts[k] * 100)
+        else
+            signals[k] = math.ceil(100 - v * 100)
+        end
+    end
+
+    return signals
+end
+
 ---@param entity_data EntityData
 local function update_signals(entity_data)
     if not (entity_data and entity_data.combinator and entity_data.combinator.valid) then return end
     sanitize_targets(entity_data)
-    local control_behavior = entity_data.combinator.get_control_behavior() --[[@as LuaConstantCombinatorControlBehavior]]
     if #entity_data.targets == 0 then
-        control_behavior.get_section(1).filters = {}
+        update_filters(entity_data)
         return
     end
-
-
     local inv = load_inventories(entity_data)
-
-    -- calculate freshness
-    local signals = {}
-    if entity_data.mode == aggregation_mode.mean then
-        local counts = {}
-        for i=1, #inv do
-            local itemStack = inv[i]
-            if itemStack and itemStack.valid_for_read and itemStack.spoil_percent > 0 then
-                local item_name = itemStack.name
-                if not signals[item_name] then
-                    signals[item_name] = 0
-                    counts[item_name] = 0
-                end
-                signals[item_name] = signals[item_name] + itemStack.spoil_percent * itemStack.count
-                counts[item_name] = counts[item_name] + itemStack.count
-            end
-        end
-        for k,v in pairs(signals) do
-            signals[k] = math.ceil(100 - v / counts[k] * 100)
-        end
-    elseif entity_data.mode == aggregation_mode.min then
-        for i=1, #inv do
-            local itemStack = inv[i]
-            if itemStack and itemStack.valid_for_read and itemStack.spoil_percent > 0 then
-                local item_name = itemStack.name
-                if not signals[item_name] then signals[item_name] = 0 end
-                if signals[item_name] < itemStack.spoil_percent then signals[item_name] = itemStack.spoil_percent end
-            end
-        end
-        for k,v in pairs(signals) do
-            signals[k] = math.ceil(100 - v * 100)
-        end
-    elseif entity_data.mode == aggregation_mode.max then
-        for i=1, #inv do
-            local itemStack = inv[i]
-            if itemStack and itemStack.valid_for_read and itemStack.spoil_percent > 0 then
-                local item_name = itemStack.name
-                if not signals[item_name] then signals[item_name] = 100 end
-                if signals[item_name] > itemStack.spoil_percent then signals[item_name] = itemStack.spoil_percent end
-            end
-        end
-        for k,v in pairs(signals) do
-            signals[k] = math.ceil(100 - v * 100)
-        end
-    end
-
-    -- set signals
-    local control_behavior = entity_data.combinator.get_control_behavior() --[[@as LuaConstantCombinatorControlBehavior]]
-    if control_behavior.sections_count == 0 then control_behavior.add_section() end
-    local section = control_behavior.get_section(1) --[[@as LuaLogisticSection]]
-    section.filters = {}
-    local i = 1
-    for k,v in pairs(signals)
-    do
-        section.set_slot(i, {value = {type="item", name=k, quality="normal"}, min=v})
-        i = i + 1
-    end
+    local signals = compute_signals(inv, entity_data.mode)
+    update_filters(entity_data, signals)
 end
 
-local function on_tick (event)
+local function on_tick(event)
     local tickupdate = event.tick % settings.global["spoilage-sensor-signal-update-interval"].value
     local tickscan = event.tick % settings.global["spoilage-sensor-signal-scan-interval"].value
     for k,v in pairs(storage.entity_data) do
@@ -263,8 +254,6 @@ local function on_entity_created(event)
     if storage.entity_data[entity.unit_number] then return end
     local entity_data = {combinator=entity, targets={}, mode=aggregation_mode.mean}
     storage.entity_data[entity.unit_number] = entity_data
-    local control_behavior = entity_data.combinator.get_control_behavior() --[[@as LuaConstantCombinatorControlBehavior]]
-    if control_behavior.sections_count == 0 then control_behavior.add_section() end
     update_target(entity_data)
 end
 
@@ -285,19 +274,23 @@ end
 local function on_mode_changed(event)
     local elem = event.element
     if not elem then return end
-
+    local entity_data = storage.entity_data[elem.tags.unit_number]
     if elem.name == "ssrb-agg-mean" then
         elem.parent["ssrb-agg-min" ].state = false
         elem.parent["ssrb-agg-max" ].state = false
-        storage.entity_data[elem.tags.unit_number].mode = aggregation_mode.mean
+        entity_data.mode = aggregation_mode.mean
     elseif elem.name == "ssrb-agg-min" then
         elem.parent["ssrb-agg-mean" ].state = false
         elem.parent["ssrb-agg-max" ].state = false
-        storage.entity_data[elem.tags.unit_number].mode = aggregation_mode.min
+        entity_data.mode = aggregation_mode.min
     elseif elem.name == "ssrb-agg-max" then
         elem.parent["ssrb-agg-mean" ].state = false
         elem.parent["ssrb-aggn" ].state = false
-        storage.entity_data[elem.tags.unit_number].mode = aggregation_mode.max
+        entity_data.mode = aggregation_mode.max
+    end
+    if entity_data.combinator.name == Common.internal_ac_name then
+        local bvr = entity_data.combinator.get_control_behavior() --[[@as LuaArithmeticCombinatorControlBehavior]]
+        bvr.parameters.operation = Common.aggregation_operators[entity_data.mode]
     end
 end
 
