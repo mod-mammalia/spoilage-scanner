@@ -1,11 +1,11 @@
 {
-  "name": "filter-combinator-improved",
-  "version": "3.8.2",
-  "title": "Filter Combinator (Reimagined)",
-  "description": "A combinator that allows the filtering of values. Reimagined version of the original filter combinator by Sil3ntSt0rm.",
-  "author": "hgschmie",
-  "contact": "https://github.com/hgschmie/factorio-filter-combinator/issues/",
-  "homepage": "https://github.com/hgschmie/factorio-filter-combinator",
+  "name": "extended-combinators",
+  "version": "0.0.1",
+  "title": "Extended Combinators",
+  "description": "A collection of combinators that add new sensing capabilities and simplify existing circuits.",
+  "author": "jimbroof",
+  "contact": "https://github.com/mod-mammalia/spoilage-scanner/issues/",
+  "homepage": "https://github.com/mod-mammalia/spoilage-scanner",
   "factorio_version": "2.0",
   "dependencies": [
     "base >= 2.0.48",
