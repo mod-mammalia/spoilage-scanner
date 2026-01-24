@@ -6,7 +6,7 @@ assert(script)
 local Is = require('stdlib.utils.is')
 local table = require('stdlib.utils.table')
 local tools = require('framework.tools')
-local Gui = require('scripts.gui.extended-combinator')
+local ExcGui = require('scripts.gui.exc-gui')
 local const = require('lib.constants')
 
 ---@class ExtendedCombinator
@@ -34,7 +34,7 @@ ExtendedCombinator.default_config = {
 ExtendedCombinator.combinator_name = 'UNDEFINED'
 ExtendedCombinator.packed_combinator_name = 'UNDEFINED'
 ExtendedCombinator.gui_name = 'UNDEFINED'
-ExtendedCombinator.gui = Gui
+ExtendedCombinator.gui = ExcGui
 ---@return string[]
 function ExtendedCombinator:get_entity_names()
     return { self.combinator_name, self.packed_combinator_name }
@@ -455,6 +455,8 @@ end
 -- picker dollies (move)
 ------------------------------------------------------------------------
 
+---@param start_pos MapPosition
+---@param entity LuaEntity
 function ExtendedCombinator:move(start_pos, entity)
     local fc_entity = self:entity(entity.unit_number)
     if not fc_entity then return end
@@ -500,7 +502,7 @@ function ExtendedCombinator:on_entity_created(event)
     end
 
     local config = tags and tags[const.config_tag_name] --[[@as ExtendedCombinatorConfig ]]
-    This.exi:create(entity, config)
+    self:create(entity, config)
 end
 
 ---@alias on_entity_deleted_params EventData.on_player_mined_entity | EventData.on_robot_mined_entity | EventData.on_space_platform_mined_entity | EventData.script_raised_destroy
@@ -510,7 +512,7 @@ function ExtendedCombinator:on_entity_deleted(event)
     if not (entity and entity.valid) then return end
     assert(entity.unit_number)
 
-    if This.exi:destroy(entity.unit_number) then
+    if self:destroy(entity.unit_number) then
         Framework.gui_manager:destroy_gui_by_entity_id(entity.unit_number)
         storage.last_tick_entity = nil
     end
@@ -524,7 +526,7 @@ end
 ---@param event on_object_destroyed_params
 function ExtendedCombinator:on_object_destroyed(event)
     -- main entity destroyed
-    if This.fico:destroy(event.useful_id) then
+    if self:destroy(event.useful_id) then
         storage.last_tick_entity = nil
         Framework.gui_manager:destroy_gui_by_entity_id(event.useful_id)
     end
@@ -539,7 +541,7 @@ end
 function ExtendedCombinator:on_entity_cloned(event)
     if not (event and event.source and event.source.valid and event.destination and event.destination.valid) then return end
 
-    local src_data = This.fico:entity(event.source.unit_number)
+    local src_data = self:entity(event.source.unit_number)
     if not src_data then return end
 
     for _, cloned_entity in pairs(event.destination.surface.find_entities_filtered {
@@ -549,7 +551,7 @@ function ExtendedCombinator:on_entity_cloned(event)
         cloned_entity.destroy()
     end
 
-    This.fico:create(event.destination, src_data.config)
+    self:create(event.destination, src_data.config)
 end
 
 ---@alias on_internal_entity_cloned_params EventData.on_entity_cloned
@@ -574,12 +576,12 @@ function ExtendedCombinator:on_entity_settings_pasted(event)
     local player = Player.get(event.player_index)
     if not (player and player.valid and player.force == event.source.force and player.force == event.destination.force) then return end
 
-    local src_fc_entity = This.fico:entity(event.source.unit_number)
-    local dst_fc_entity = This.fico:entity(event.destination.unit_number)
+    local src_fc_entity = self:entity(event.source.unit_number)
+    local dst_fc_entity = self:entity(event.destination.unit_number)
 
     if not (src_fc_entity and dst_fc_entity) then return end
 
-    This.fico:reconfigure(dst_fc_entity, src_fc_entity.config)
+    self:reconfigure(dst_fc_entity, src_fc_entity.config)
 end
 
 --------------------------------------------------------------------------------
@@ -587,7 +589,7 @@ end
 --------------------------------------------------------------------------------
 
 function ExtendedCombinator:on_configuration_changed()
-    This.fico:init()
+    self:init()
 
     -- enable filter combinator if circuit network is researched.
     for _, force in pairs(game.forces) do
@@ -603,7 +605,7 @@ end
 
 function ExtendedCombinator:on_nth_tick()
     local interval = TICK_INTERVAL -- fraction of the ficos to update
-    local entities = This.fico:entities()
+    local entities = self:entities()
     local process_count = math.ceil(table_size(entities) / interval)
     local index = storage.last_tick_entity
 
@@ -613,10 +615,10 @@ function ExtendedCombinator:on_nth_tick()
             index, fc_entity = next(entities, index)
             if fc_entity then
                 if fc_entity.main and fc_entity.main.valid then
-                    This.fico:tick(fc_entity)
+                    self:tick(fc_entity)
                     process_count = process_count - 1
                 elseif index then
-                    This.fico:destroy(index)
+                    self:destroy(index)
                 end
             end
         until process_count == 0 or not index
