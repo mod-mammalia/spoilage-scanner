@@ -88,7 +88,7 @@ end
 if script then
     This.exco = require('scripts.extended-combinator')
     This.fico = require('scripts.filter-combinator')
-    This.spco = require('scripts.spoilage-combinator')
+    This.spco = require('scripts.spoilage.spoilage-combinator')
     This.combinators = { This.fico, This.spco }
     local wrappedHandlerNames = {'on_init', 'on_load'}
     for _, handlerName in ipairs(wrappedHandlerNames) do

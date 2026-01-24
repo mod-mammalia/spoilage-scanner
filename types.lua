@@ -1,5 +1,19 @@
 ---@meta
 
+---@enum wire_type_names
+wire_type_names = {
+    [defines.wire_type.copper] = 'copper',
+    [defines.wire_type.red] = 'red',
+    [defines.wire_type.green] = 'green',
+}
+
+---@enum combinator_type
+combinator_type = {
+    constant = 'cc',
+    arithmetic = 'ac',
+    decider = 'dc'
+}
+
 ---@enum extended_combinator_type
 extended_combinator_type = {
     filter_combinator = 'fico',
@@ -40,12 +54,7 @@ aggregation_mode = {
 ---@class ExtendedCombinatorConfig
 ---@field enabled boolean
 ---@field status defines.entity_status?
----@field use_wire boolean
----@field filter_wire defines.wire_type
----@field include_mode boolean
----@field filters LogisticFilter[]
 ---@field combinator_type extended_combinator_type
----@field aggregation_mode aggregation_mode
 
 --- @class ExtendedCombinatorData
 --- @field main LuaEntity
@@ -53,6 +62,21 @@ aggregation_mode = {
 --- @field comb_visible boolean
 --- @field entities LuaEntity[]
 --- @field ref table<string, LuaEntity>
+---@class FilterCombinatorConfig : ExtendedCombinatorConfig
+---@field use_wire boolean
+---@field filter_wire defines.wire_type
+---@field include_mode boolean
+---@field filters LogisticFilter[]
+
+---@class FilterCombinatorData : ExtendedCombinatorData
+---@field config FilterCombinatorConfig
+
+---@class SpoilageCombinatorConfig : ExtendedCombinatorConfig
+---@field aggregation_mode aggregation_mode
+
+---@class SpoilageCombinatorData : ExtendedCombinatorData
+---@field config SpoilageCombinatorConfig
+---@field containers table<defines.wire_type, LuaEntity[]>
 
 ---@class ExcCreateInternalEntityCfg
 ---@field entity ExtendedCombinatorData
@@ -63,18 +87,6 @@ aggregation_mode = {
 ---@field x integer?
 ---@field y integer?
 
----@class FilterCombinatorConfig : ExtendedCombinatorConfig
----@class FilterCombinatorData : ExtendedCombinatorData
-
----@class SpoilageCombinatorConfig : ExtendedCombinatorConfig
----@class SpoilageCombinatorData : ExtendedCombinatorData
-
----@enum combinator_type
-combinator_type = {
-    constant = 'cc',
-    arithmetic = 'ac',
-    decider = 'dc'
-}
 ---@class SubEntityConfig
 ---@field id string
 ---@field type combinator_type
@@ -87,9 +99,5 @@ combinator_type = {
 ---@field count integer
 ---@field VERSION integer
 
----@enum wire_type_names
-wire_type_names = {
-    [defines.wire_type.copper] = 'copper',
-    [defines.wire_type.red] = 'red',
-    [defines.wire_type.green] = 'green',
-}
+---@alias SpoilageSignals table<string, integer>
+---@alias WiredSpoilageSignals table<defines.wire_type, SpoilageSignals>
