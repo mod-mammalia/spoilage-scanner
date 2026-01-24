@@ -265,8 +265,10 @@ end
 local function register_events()
     -- register all gui events with the framework
     for name, id in pairs(defines.events) do
+---@diagnostic disable-next-line: undefined-field
         if name:starts_with('on_gui_') then
             Event.on_event(id, function(ev)
+---@diagnostic disable-next-line: param-type-mismatch
                 Framework.gui_manager:dispatch(ev)
             end)
         end

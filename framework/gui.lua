@@ -100,6 +100,7 @@ function FrameworkGui:register_handlers(gui_element, extras)
     local handlers = extras.handler
     local handler_name = gui_element.name
 
+---@diagnostic disable-next-line: param-type-mismatch
     for event, handler in pairs(handlers) do
         local event_handlers = self.event_handlers[event]
         assert(event_handlers, 'Handler for event ' .. tostring(event) .. ' is not supported!')

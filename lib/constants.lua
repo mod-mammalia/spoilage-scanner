@@ -34,7 +34,7 @@ function Constants.framework_init()
         -- The filesystem root.
         root = Constants.root,
         -- Remote interface name
-        remote_name = Constants.filter_combinator_name,
+        remote_name = Constants.name,
     }
 end
 

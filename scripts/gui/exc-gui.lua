@@ -13,9 +13,12 @@ local signal_converter = require('framework.signal_converter')
 
 local const = require('lib.constants')
 
----@class FilterCombinatorGui
+---@class ExtendedCombinatorGui
 local ExtendedCombinatorGui = {}
 
+---@type ExtendedCombinator
+ExtendedCombinatorGui.combinator = nil
+ExtendedCombinatorGui.gui_name = 'exc-gui'
 ----------------------------------------------------------------------------------------------------
 -- UI definition
 ----------------------------------------------------------------------------------------------------
@@ -24,17 +27,24 @@ local ExtendedCombinatorGui = {}
 --- GUI definition as it can not be serialized into storage.
 ---@return framework.gui_manager.event_definition
 function ExtendedCombinatorGui:get_gui_event_definition()
+    local methodNames = {
+        'onWindowClosed',
+        'onSwitchEnabled',
+        'onSwitchExclusive',
+        'onSwitchGreenWire',
+        'onSwitchRedWire',
+        'onToggleWireMode',
+        'onSelectSignal',
+    }
+    local handlers = {}
+    for _, methodName in ipairs(methodNames) do
+        local method = self[methodName]
+        local handler = function(event) return method(self, event) end
+        handlers[methodName] = handler
+    end
     return {
-        events = {
-            onWindowClosed = self.onWindowClosed,
-            onSwitchEnabled = self.onSwitchEnabled,
-            onSwitchExclusive = self.onSwitchExclusive,
-            onSwitchGreenWire = self.onSwitchGreenWire,
-            onSwitchRedWire = self.onSwitchRedWire,
-            onToggleWireMode = self.onToggleWireMode,
-            onSelectSignal = self.onSelectSignal,
-        },
-        callback = self.guiUpdater,
+        events = handlers,
+        callback = function(gui) return self:guiUpdater(gui) end,
     }
 end
 
@@ -44,8 +54,8 @@ end
 function ExtendedCombinatorGui:getUi(gui)
     local gui_events = gui.gui_events
 
-    local fc_entity = This.fico:entity(gui.entity_id)
-    assert(fc_entity)
+    local exc_entity = self.combinator:entity(gui.entity_id)
+    assert(exc_entity)
 
     return {
         type = 'frame',
@@ -62,7 +72,7 @@ function ExtendedCombinatorGui:getUi(gui)
                     {
                         type = 'label',
                         style = 'frame_title',
-                        caption = { 'entity-name.' .. const.filter_combinator_name },
+                        caption = { 'entity-name.' .. self.combinator.combinator_name },
                         drag_target = 'gui_root',
                         ignored_by_interaction = true,
                     },
@@ -167,7 +177,7 @@ function ExtendedCombinatorGui:getUi(gui)
                                     {
                                         type = 'label',
                                         style = 'label',
-                                        caption = { const:locale('id'), fc_entity.main.unit_number },
+                                        caption = { const:locale('id'), exc_entity.main.unit_number },
                                     },
                                 },
                             },
@@ -180,7 +190,7 @@ function ExtendedCombinatorGui:getUi(gui)
                                         type = 'entity-preview',
                                         name = 'preview',
                                         style = 'wide_entity_button',
-                                        elem_mods = { entity = fc_entity.main },
+                                        elem_mods = { entity = exc_entity.main },
                                     },
                                 },
                             },
@@ -350,16 +360,16 @@ local color_map = {
 }
 
 ---@param gui_element LuaGuiElement?
----@param fc_entity FilterCombinatorData?
+---@param exc_entity ExtendedCombinatorData?
 ---@param wires defines.wire_connector_id[]
-local function render_network_signals(gui_element, fc_entity, wires)
-    if not fc_entity then return end
+function ExtendedCombinatorGui:render_network_signals(gui_element, exc_entity, wires)
+    if not exc_entity then return end
 
     assert(gui_element)
     gui_element.clear()
 
     for _, connector_id in pairs(wires) do
-        local signals = fc_entity.main.get_signals(connector_id)
+        local signals = exc_entity.main.get_signals(connector_id)
         if signals then
             local signal_count = 0
             for _, signal in ipairs(signals) do
@@ -367,7 +377,7 @@ local function render_network_signals(gui_element, fc_entity, wires)
                     type = 'sprite-button',
                     sprite = signal_converter:signal_to_sprite_name(signal),
                     number = signal.count,
-                    quality = signal.signal.quality,
+                    quality = signal.signal.quality --[[@as string]],
                     style = color_map[connector_id] .. '_circuit_network_content_slot',
                     tooltip = signal_converter:signal_to_prototype(signal).localised_name,
                     elem_tooltip = signal_converter:signal_to_elem_id(signal),
@@ -414,10 +424,10 @@ local values_on_off = table.invert(on_off_values)
 ---@param event EventData.on_gui_switch_state_changed
 ---@param gui framework.gui
 function ExtendedCombinatorGui:onSwitchEnabled(event, gui)
-    local fc_entity = This.fico:entity(gui.entity_id)
-    if not fc_entity then return end
+    local exc_entity = self.combinator:entity(gui.entity_id)
+    if not exc_entity then return end
 
-    fc_entity.config.enabled = on_off_values[event.element.switch_state]
+    exc_entity.config.enabled = on_off_values[event.element.switch_state]
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -434,10 +444,10 @@ local values_incl_excl = table.invert(incl_excl_values)
 ---@param event EventData.on_gui_switch_state_changed
 ---@param gui framework.gui
 function ExtendedCombinatorGui:onSwitchExclusive(event, gui)
-    local fc_entity = This.fico:entity(gui.entity_id)
-    if not fc_entity then return end
+    local exc_entity = self.combinator:entity(gui.entity_id)
+    if not exc_entity then return end
 
-    fc_entity.config.include_mode = incl_excl_values[event.element.switch_state]
+    exc_entity.config.include_mode = incl_excl_values[event.element.switch_state]
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -446,10 +456,10 @@ end
 ---@param event EventData.on_gui_checked_state_changed
 ---@param gui framework.gui
 function ExtendedCombinatorGui:onSwitchGreenWire(event, gui)
-    local fc_entity = This.fico:entity(gui.entity_id)
-    if not fc_entity then return end
+    local exc_entity = self.combinator:entity(gui.entity_id)
+    if not exc_entity then return end
 
-    fc_entity.config.filter_wire = defines.wire_type.green
+    exc_entity.config.filter_wire = defines.wire_type.green
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -458,10 +468,10 @@ end
 ---@param event EventData.on_gui_checked_state_changed
 ---@param gui framework.gui
 function ExtendedCombinatorGui:onSwitchRedWire(event, gui)
-    local fc_entity = This.fico:entity(gui.entity_id)
-    if not fc_entity then return end
+    local exc_entity = self.combinator:entity(gui.entity_id)
+    if not exc_entity then return end
 
-    fc_entity.config.filter_wire = defines.wire_type.red
+    exc_entity.config.filter_wire = defines.wire_type.red
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -469,10 +479,10 @@ end
 ---@param event  EventData.on_gui_checked_state_changed
 ---@param gui framework.gui
 function ExtendedCombinatorGui:onToggleWireMode(event, gui)
-    local fc_entity = This.fico:entity(gui.entity_id)
-    if not fc_entity then return end
+    local exc_entity = self.combinator:entity(gui.entity_id)
+    if not exc_entity then return end
 
-    fc_entity.config.use_wire = event.element.state
+    exc_entity.config.use_wire = event.element.state
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -480,8 +490,8 @@ end
 ---@param event EventData.on_gui_elem_changed
 ---@param gui framework.gui
 function ExtendedCombinatorGui:onSelectSignal(event, gui)
-    local fc_entity = This.fico:entity(gui.entity_id)
-    if not fc_entity then return end
+    local exc_entity = self.combinator:entity(gui.entity_id)
+    if not exc_entity then return end
 
     if not event.element.tags then return end
 
@@ -491,7 +501,7 @@ function ExtendedCombinatorGui:onSelectSignal(event, gui)
     if signal then
         local quality = signal.quality or 'normal'
         local type = signal.type or 'item'
-        for _, filter in pairs(fc_entity.config.filters) do
+        for _, filter in pairs(exc_entity.config.filters) do
             if filter.value.name == signal.name and filter.value.type == type and filter.value.quality == quality then
                 event.element.elem_value = nil
                 local player = Player.get(event.player_index)
@@ -502,12 +512,12 @@ function ExtendedCombinatorGui:onSelectSignal(event, gui)
             end
         end
 
-        fc_entity.config.filters[slot] = {
+        exc_entity.config.filters[slot] = {
             value = { name = signal.name, type = type, quality = quality, comparator = '=', },
             min = 1,
         }
     else
-        fc_entity.config.filters[slot] = nil
+        exc_entity.config.filters[slot] = nil
     end
 end
 
@@ -516,10 +526,10 @@ end
 ----------------------------------------------------------------------------------------------------
 
 ---@param gui framework.gui
----@param fc_entity FilterCombinatorData
+---@param exc_entity ExtendedCombinatorData
 ---@return framework.gui.element_definition[] gui_elements
-local function make_grid_buttons(gui, fc_entity)
-    local filters = fc_entity.config.filters
+function ExtendedCombinatorGui:make_grid_buttons(gui, exc_entity)
+    local filters = exc_entity.config.filters
     local list = {}
 
     local base = 0
@@ -555,9 +565,9 @@ end
 
 ---@param gui framework.gui
 ---@param connection_state table<defines.wire_connector_id, boolean> Network state, as returned by refresh_gui
----@param fc_entity FilterCombinatorData
-local function update_gui(gui, connection_state, fc_entity)
-    local fc_config = fc_entity.config
+---@param exc_entity ExtendedCombinatorData
+function ExtendedCombinatorGui:update_gui(gui, connection_state, exc_entity)
+    local fc_config = exc_entity.config
 
     local on_off = gui:find_element('on-off')
     on_off.switch_state = values_on_off[fc_config.enabled]
@@ -582,15 +592,15 @@ local function update_gui(gui, connection_state, fc_entity)
     local green_wire = gui:find_element('green-wire-indicator')
     green_wire.state = fc_config.filter_wire == defines.wire_type.green
 
-    local slot_buttons = make_grid_buttons(gui, fc_entity)
+    local slot_buttons = self:make_grid_buttons(gui, exc_entity)
     gui:replace_children('signals', slot_buttons)
 end
 
 ---@param gui framework.gui
----@param fc_entity FilterCombinatorData
+---@param exc_entity ExtendedCombinatorData
 ---@return table<defines.wire_connector_id, boolean> connection_state
-local function refresh_gui(gui, fc_entity)
-    local fc_config = fc_entity.config
+function ExtendedCombinatorGui:refresh_gui(gui, exc_entity)
+    local fc_config = exc_entity.config
 
     local entity_status = (not fc_config.enabled) and defines.entity_status.disabled -- if not enabled, status is disabled
         or fc_config.status                                                          -- if enabled, the registered state takes precedence if present
@@ -604,11 +614,11 @@ local function refresh_gui(gui, fc_entity)
 
     -- render input signals
     local input_signals = gui:find_element('input-signal-view')
-    render_network_signals(input_signals, fc_entity, { defines.wire_connector_id.combinator_input_green, defines.wire_connector_id.combinator_input_red })
+    self:render_network_signals(input_signals, exc_entity, { defines.wire_connector_id.combinator_input_green, defines.wire_connector_id.combinator_input_red })
 
     -- render output signals
     local output_signals = gui:find_element('output-signal-view')
-    render_network_signals(output_signals, fc_entity, { defines.wire_connector_id.combinator_output_green, defines.wire_connector_id.combinator_output_red })
+    self:render_network_signals(output_signals, exc_entity, { defines.wire_connector_id.combinator_output_green, defines.wire_connector_id.combinator_output_red })
 
     local connection_state = {}
 
@@ -620,7 +630,7 @@ local function refresh_gui(gui, fc_entity)
             local pin_name = ('combinator_%s_%s'):format(pin, color)
 
             local connector_id = defines.wire_connector_id[pin_name]
-            local wire_connector = fc_entity.main.get_wire_connector(connector_id, false)
+            local wire_connector = exc_entity.main.get_wire_connector(connector_id, false)
             local connect = false
 
             local wire_connection = gui:find_element(pin_name)
@@ -651,27 +661,27 @@ end
 ---@param gui framework.gui
 ---@return boolean
 function ExtendedCombinatorGui:guiUpdater(gui)
-    local fc_entity = This.fico:entity(gui.entity_id) --[[@as FilterCombinatorData ]]
-    if not fc_entity then return false end
+    local exc_entity = self.combinator:entity(gui.entity_id)
+    if not exc_entity then return false end
 
     ---@type filter_combinator.GuiContext
     local context = gui.context
 
-    This.fico:tick(fc_entity)
+    self.combinator:tick(exc_entity)
 
     -- always update wire state and preview
-    local connection_state = refresh_gui(gui, fc_entity)
+    local connection_state = self:refresh_gui(gui, exc_entity)
 
-    local refresh_config = not (context.last_config and table.compare(context.last_config, fc_entity.config))
+    local refresh_config = not (context.last_config and table.compare(context.last_config, exc_entity.config))
     local refresh_state = not (context.last_connection_state and table.compare(context.last_connection_state, connection_state))
 
     if refresh_config or refresh_state then
-        update_gui(gui, connection_state, fc_entity)
+        self:update_gui(gui, connection_state, exc_entity)
     end
 
     if refresh_config then
-        This.fico:reconfigure(fc_entity)
-        context.last_config = tools.copy(fc_entity.config)
+        self.combinator:reconfigure(exc_entity)
+        context.last_config = tools.copy(exc_entity.config)
     end
 
     if refresh_state then
@@ -686,7 +696,8 @@ end
 ----------------------------------------------------------------------------------------------------
 
 ---@param event EventData.on_gui_opened
-function ExtendedCombinatorGui:onGuiOpened(event)
+---@param combinator ExtendedCombinator
+function ExtendedCombinatorGui:onGuiOpened(event, combinator)
     local player = Player.get(event.player_index)
     if not player then return end
 
@@ -700,9 +711,9 @@ function ExtendedCombinatorGui:onGuiOpened(event)
     end
 
     assert(entity.unit_number)
-    local fc_entity = This.fico:entity(entity.unit_number) --[[@as FilterCombinatorData ]]
+    local exc_entity = combinator:entity(entity.unit_number) --[[@as FilterCombinatorData ]]
 
-    if not fc_entity then
+    if not exc_entity then
         log('Data missing for ' ..
             event.entity.name .. ' on ' .. event.entity.surface.name .. ' at ' .. serpent.line(event.entity.position) .. ' refusing to display UI')
         player.opened = nil
@@ -710,7 +721,7 @@ function ExtendedCombinatorGui:onGuiOpened(event)
     end
 
     ---@class filter_combinator.GuiContext
-    ---@field last_config FilterCombinatorConfig?
+    ---@field last_config ExtendedCombinatorConfig?
     ---@field last_connection_state table<defines.wire_connector_id, boolean>?
     local gui_context = {
         last_config = nil,
@@ -718,12 +729,12 @@ function ExtendedCombinatorGui:onGuiOpened(event)
     }
 
     local gui = Framework.gui_manager:create_gui {
-        type = 'combinator-gui',
+        type = self.gui_name,
         player_index = event.player_index,
         parent = player.gui.screen,
-        ui_tree_provider = ExtendedCombinatorGui.getUi,
+        ui_tree_provider = function(gui) return self:getUi(gui) end,
         context = gui_context,
-        update_callback = ExtendedCombinatorGui.guiUpdater,
+        update_callback = function(gui) return self:guiUpdater(gui) end,
         entity_id = entity.unit_number
     }
 

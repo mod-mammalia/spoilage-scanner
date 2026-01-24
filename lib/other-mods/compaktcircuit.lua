@@ -13,11 +13,11 @@ local CompaktCircuitSupport = {}
 local function ccs_get_info(entity)
     if not Is.Valid(entity) then return end
 
-    local fc_entity = This.fico:entity(entity.unit_number)
-    if not fc_entity then return end
+    local exc_entity = This:entity(entity.unit_number)
+    if not exc_entity then return end
 
     return {
-        [const.config_tag_name] = fc_entity.config
+        [const.config_tag_name] = exc_entity.config
     }
 end
 
@@ -43,8 +43,8 @@ local function ccs_create_packed_entity(info, surface, position, force)
 
     assert(packed_main)
 
-    local fc_entity = This.fico:create(packed_main, info[const.config_tag_name])
-    assert(fc_entity)
+    local exc_entity = This:create(packed_main, info[const.config_tag_name])
+    assert(exc_entity)
 
     return packed_main
 end
@@ -63,8 +63,8 @@ local function ccs_create_entity(info, surface, force)
 
     assert(main)
 
-    local fc_entity = This.fico:create(main, info[const.config_tag_name])
-    assert(fc_entity)
+    local exc_entity = This:create(main, info[const.config_tag_name])
+    assert(exc_entity)
 
     return main
 end

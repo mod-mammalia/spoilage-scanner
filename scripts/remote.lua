@@ -6,22 +6,22 @@ assert(script)
 local tools = require('framework.tools')
 
 ---@param entity_id integer
----@return FilterCombinatorConfig? config
+---@return ExtendedCombinatorConfig? config
 local function get_config(entity_id)
-    local fc_entity = This.fico:entity(entity_id)
-    if not fc_entity then return nil end
+    local exc_entity = This:entity(entity_id)
+    if not exc_entity then return nil end
 
-    return fc_entity.config
+    return exc_entity.config
 end
 
 ---@param entity_id integer
----@param config FilterCombinatorConfig
+---@param config ExtendedCombinatorConfig
 local function set_config(entity_id, config)
-    local fc_entity = This.fico:entity(entity_id)
-    if not fc_entity then return end
+    local exc_entity = This:entity(entity_id)
+    if not exc_entity then return end
 
-    fc_entity.config = tools.copy(config)
-    This.fico:reconfigure(fc_entity)
+    exc_entity.config = tools.copy(config)
+    This:reconfigure(exc_entity)
 end
 
 if Framework.remote_api then
