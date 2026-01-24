@@ -29,9 +29,8 @@ local function on_entity_created(event)
         tags = tags or entity_ghost.tags
     end
 
-    local config = tags and tags[const.config_tag_name] --[[@as FilterCombinatorConfig ]]
-
-    This.fico:create(entity, config)
+    local config = tags and tags[const.config_tag_name] --[[@as ExtendedCombinatorConfig ]]
+    This.exi:create(entity, config)
 end
 
 ---@param event EventData.on_player_mined_entity | EventData.on_robot_mined_entity | EventData.on_space_platform_mined_entity | EventData.script_raised_destroy
@@ -40,7 +39,7 @@ local function on_entity_deleted(event)
     if not (entity and entity.valid) then return end
     assert(entity.unit_number)
 
-    if This.fico:destroy(entity.unit_number) then
+    if This.exi:destroy(entity.unit_number) then
         Framework.gui_manager:destroy_gui_by_entity_id(entity.unit_number)
         storage.last_tick_entity = nil
     end
@@ -141,7 +140,7 @@ local function onNthTick()
                 if fc_entity.main and fc_entity.main.valid then
                     This.fico:tick(fc_entity)
                     process_count = process_count - 1
-                else
+                elseif index then
                     This.fico:destroy(index)
                 end
             end

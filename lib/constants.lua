@@ -13,10 +13,10 @@ local Constants = {}
 -- the current version that is the result of the latest migration
 Constants.current_version = 10
 
-Constants.prefix = 'hps__fc-'
-Constants.name = 'filter-combinator'
+Constants.prefix = 'exc-'
+Constants.name = 'extended-combinators'
 Constants.name_packed = Constants.name .. '-packed' -- for compakt circuits
-Constants.root = '__filter-combinator-improved__'
+Constants.root = '__extended-combinators__'
 Constants.gfx_location = Constants.root .. '/graphics/'
 Constants.config_tag_name = 'fc_config'
 
@@ -84,18 +84,22 @@ Constants.ac_sprites = {
 --------------------------------------------------------------------------------
 
 -- Base name
-Constants.filter_combinator_name = Constants:with_prefix(Constants.name)
+Constants.filter_combinator_base_name = 'filter-combinator'
+Constants.spoilage_combinator_base_name = 'spoilage-combinator'
+Constants.filter_combinator_name = Constants:with_prefix(Constants.filter_combinator_base_name)
+Constants.spoilage_combinator_name = Constants:with_prefix(Constants.spoilage_combinator_base_name)
 
 -- Compactcircuits support
-Constants.filter_combinator_name_packed = Constants:with_prefix(Constants.name_packed)
+Constants.filter_combinator_name_packed = Constants.filter_combinator_name .. '-packed'
+Constants.spoilage_combinator_name_packed = Constants.spoilage_combinator_name .. '-packed'
 
 -- Internal entities in normal and debug mode
-Constants.internal_ac_name = Constants:with_prefix('filter-combinator-ac')
-Constants.internal_cc_name = Constants:with_prefix('filter-combinator-cc')
-Constants.internal_dc_name = Constants:with_prefix('filter-combinator-dc')
-Constants.internal_debug_ac_name = Constants:with_prefix('filter-combinator-debug-ac')
-Constants.internal_debug_cc_name = Constants:with_prefix('filter-combinator-debug-cc')
-Constants.internal_debug_dc_name = Constants:with_prefix('filter-combinator-debug-dc')
+Constants.internal_ac_name = Constants:with_prefix('internal-combinator-ac')
+Constants.internal_cc_name = Constants:with_prefix('internal-combinator-cc')
+Constants.internal_dc_name = Constants:with_prefix('internal-combinator-dc')
+Constants.internal_debug_ac_name = Constants:with_prefix('internal-combinator-debug-ac')
+Constants.internal_debug_cc_name = Constants:with_prefix('internal-combinator-debug-cc')
+Constants.internal_debug_dc_name = Constants:with_prefix('internal-combinator-debug-dc')
 
 Constants.entity_maps = {
     standard = { ac = Constants.internal_ac_name, cc = Constants.internal_cc_name, dc = Constants.internal_dc_name, },
@@ -107,6 +111,8 @@ Constants.internal_entity_names = {
     Constants.internal_ac_name, Constants.internal_cc_name, Constants.internal_dc_name,
     Constants.internal_debug_ac_name, Constants.internal_debug_cc_name, Constants.internal_debug_dc_name,
 }
+
+Constants.signal_each = { type = 'virtual', name = 'signal-each', quality = 'normal' }
 
 --------------------------------------------------------------------------------
 return Constants

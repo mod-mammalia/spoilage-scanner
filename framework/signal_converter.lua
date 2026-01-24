@@ -90,30 +90,6 @@ function SignalConverter:logistic_filter_to_prototype(filter)
     return prototypes[type][filter.value.name]
 end
 
----@param filter LogisticFilter
----@return ElemID
-function SignalConverter:logistic_filter_to_elem_id(filter)
-    assert(filter)
-
-    local filter_type = filter.value.type or 'item' -- see https://lua-api.factorio.com/latest/concepts/SignalID.html
-
-    ---@type ElemID
-    local result = {
-        type = filter_type,
-        name = filter.value.name,
-    }
-
-    if filter_type == 'virtual' then
-        result.type = 'signal'
-        result.signal_type = filter_type ---@diagnostic disable-line: inject-field
-    elseif filter.value.quality then
-        if self.supports_quality[result.type] then result.type = self.supports_quality[result.type] end
-        result.quality = filter.value.quality
-    end
-
-    return result
-end
-
 ---@param signal Signal
 ---@return LogisticFilter
 function SignalConverter:signal_to_logistic_filter(signal)
